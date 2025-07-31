@@ -14,7 +14,15 @@ static IRQ_HANDLER_TABLE: HandlerTable<MAX_IRQ_COUNT> = HandlerTable::new();
 /// Platform-independent IRQ dispatching.
 #[allow(dead_code)]
 pub(crate) fn dispatch_irq_common(irq_num: usize) {
-    trace!("IRQ {}", irq_num);
+    static mut IRQ_STATS: [usize; MAX_IRQ_COUNT] = [0; MAX_IRQ_COUNT];
+    unsafe {
+        if irq_num < MAX_IRQ_COUNT {
+            IRQ_STATS[irq_num] += 1;
+            if IRQ_STATS[irq_num] <= 5 || irq_num == 48 {
+                trace!("IRQ {} (count: {})", irq_num, IRQ_STATS[irq_num]);
+            }
+        }
+    }
     if !IRQ_HANDLER_TABLE.handle(irq_num) {
         warn!("Unhandled IRQ {}", irq_num);
     }

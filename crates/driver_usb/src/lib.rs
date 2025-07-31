@@ -7,13 +7,13 @@
 #![feature(if_let_guard)]
 #![feature(get_many_mut)]
 #![feature(let_chains)]
-#![feature(cfg_match)]
 #![feature(iter_collect_into)]
 #![feature(const_trait_impl)]
 
 use core::{mem::MaybeUninit, usize};
 
 use abstractions::{dma::DMA, PlatformAbstractions};
+use log::{info, warn, trace};
 use alloc::{
     collections::{btree_map::BTreeMap, btree_set::BTreeSet},
     sync::Arc,
@@ -21,7 +21,7 @@ use alloc::{
 };
 use glue::driver_independent_device_instance::DriverIndependentDeviceInstance;
 use host::{data_structures::MightBeInited, USBHostSystem};
-use log::{error, trace};
+use log::error;
 use spinlock::SpinNoIrq;
 use usb::{
     descriptors::{
@@ -42,6 +42,10 @@ pub mod err;
 pub mod glue;
 pub mod host;
 pub mod usb;
+
+// 重新导出视频流缓冲区
+#[cfg(feature = "packed_drivers")]
+pub use usb::universal_drivers::uvc_drivers::generic_uvc::VIDEO_STREAM_BUFFER;
 
 #[derive(Clone, Debug)]
 pub struct USBSystemConfig<O>
@@ -83,10 +87,13 @@ where
     pub fn init(mut self) -> Self {
         trace!("initializing!");
         self.host_driver_layer.init();
-        trace!("host driver layer init complete");
         self.usb_driver_layer.init();
         trace!("usb system init complete");
         self
+    }
+    
+    pub fn get_host_layer(&self) -> &USBHostSystem<O> {
+        &self.host_driver_layer
     }
 
     pub fn init_probe(mut self) -> Self {
@@ -111,6 +118,9 @@ where
 
             //and do some prepare stuff
         }
+        
+        // 异步模式已在驱动中启用，不需要额外设置
+        
         // }
         // .await;
 
@@ -120,9 +130,20 @@ where
     pub fn driver_active(mut self) -> Self {
         self
     }
+    
+    /// 测试USB中断机制
+    pub fn test_interrupt(&mut self) {
+        info!("开始测试USB中断机制...");
+        self.host_driver_layer.test_interrupt();
+        info!("USB中断测试完成");
+    }
+    
 
     pub fn drive_all(mut self) -> Self {
         loop {
+            // 移除轮询机制，改为中断驱动
+            // 事件处理现在由中断处理函数完成
+            
             let tick = self.usb_driver_layer.tick();
             if tick.len() != 0 {
                 trace!("tick! {:?}", tick.len());
@@ -130,6 +151,19 @@ where
             }
         }
         self
+    }
+
+    /// 处理USB事件的单次循环
+    pub fn tick(&mut self) {
+        // 移除主动轮询，事件处理由中断驱动
+        // self.host_driver_layer.poll_events();
+        
+        // 收集URB
+        let tick = self.usb_driver_layer.tick();
+        if tick.len() != 0 {
+            trace!("tick! 收集到 {} 个URB批次", tick.len());
+            self.host_driver_layer.tock(tick);
+        }
     }
 
     pub fn drop_device(&mut self, mut driver_independent_device_slot_id: usize) {
@@ -162,15 +196,13 @@ where
                         )
                         .bits(),
                         data: Some(buffer_device.addr_len_tuple()),
-                        response:false  
+                        response:false
                     },
                 ) {
                     Ok(_) => {
                         let mut parser = RawDescriptorParser::<O>::new(buffer_device);
-                        trace!("parsing device descriptor");
                         parser.single_state_cycle();
                         let num_of_configs = parser.num_of_configs();
-                        trace!("num of configs: {}", num_of_configs);
                         for index in 0..num_of_configs {
                             let buffer = DMA::new_vec(
                                 0u8,
@@ -200,7 +232,6 @@ where
                                     },
                                 )
                                 .inspect(|_| {
-                                    trace!("get a config descriptor,parsing config descriptor");
                                     parser.append_config(buffer);
                                 });
                         }
@@ -213,7 +244,7 @@ where
                 };
             }
 
-            trace!("parsed descriptor:{:#?}", driver.descriptors);
+            //trace!("parsed descriptor:{:#?}", driver.descriptors);
 
             if let MightBeInited::Inited(TopologicalUSBDescriptorRoot {
                 device: devices,

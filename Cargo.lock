@@ -82,7 +82,7 @@ dependencies = [
  "driver_i2c",
  "driver_pca9685",
  "driver_usb",
- "xhci",
+ "xhci 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -207,6 +207,17 @@ dependencies = [
 
 [[package]]
 name = "arceos-usb-hid"
+version = "0.1.0"
+dependencies = [
+ "axalloc",
+ "axfeat",
+ "axhal",
+ "axstd",
+ "driver_usb",
+]
+
+[[package]]
+name = "arceos-usb-uvc"
 version = "0.1.0"
 dependencies = [
  "axalloc",
@@ -1005,7 +1016,7 @@ dependencies = [
  "num-traits",
  "spinlock",
  "tock-registers 0.9.0",
- "xhci",
+ "xhci 0.9.2",
 ]
 
 [[package]]
@@ -2277,6 +2288,18 @@ dependencies = [
  "bitflags 2.6.0",
  "rustversion",
  "volatile 0.4.6",
+]
+
+[[package]]
+name = "xhci"
+version = "0.9.2"
+dependencies = [
+ "accessor",
+ "bit_field",
+ "log",
+ "num-derive 0.3.3",
+ "num-traits",
+ "paste",
 ]
 
 [[package]]

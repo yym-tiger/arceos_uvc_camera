@@ -2,7 +2,7 @@ pub mod drivers;
 pub mod operation;
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use drivers::driverapi::{USBSystemDriverModule, USBSystemDriverModuleInstance};
-use log::trace;
+use log::{info, trace};
 use spinlock::SpinNoIrq;
 use urb::URB;
 
@@ -18,7 +18,7 @@ pub mod trasnfer;
 pub mod urb;
 
 #[cfg(feature = "packed_drivers")]
-pub(crate) mod universal_drivers;
+pub mod universal_drivers;
 
 pub struct USBDriverSystem<'a, O>
 where
@@ -44,20 +44,16 @@ where
     pub fn init(&mut self) {
         #[cfg(feature = "packed_drivers")]
         {
-            self.managed_modules.load_driver(Box::new(
-                universal_drivers::hid_drivers::hid_mouse::HidMouseDriverModule,
-            ));
+            // self.managed_modules.load_driver(Box::new(
+            //     universal_drivers::hid_drivers::hid_mouse::HidMouseDriverModule,
+            // ));
 
-            self.managed_modules.load_driver(Box::new(
-                universal_drivers::hid_drivers::hid_keyboard::HidKeyboardDriverModule,
-            ));
+            // self.managed_modules.load_driver(Box::new(
+            //     universal_drivers::hid_drivers::hid_keyboard::HidKeyboardDriverModule,
+            // ));
 
             self.managed_modules.load_driver(Box::new(
                 universal_drivers::uvc_drivers::generic_uvc::GenericUVCDriverModule,
-            ));
-
-            self.managed_modules.load_driver(Box::new(
-                universal_drivers::cdc_drivers::cdc_serial::CdcSerialDriverModule,
             ));
         }
 

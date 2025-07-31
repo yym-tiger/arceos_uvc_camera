@@ -43,7 +43,16 @@ pub fn register_handler(irq_num: usize, handler: IrqHandler) -> bool {
 /// up in the IRQ handler table and calls the corresponding handler. If
 /// necessary, it also acknowledges the interrupt controller after handling.
 pub fn dispatch_irq(_unused: usize) {
-    GICC.handle_irq(|irq_num| crate::irq::dispatch_irq_common(irq_num as _));
+    GICC.handle_irq(|irq_num| {
+        static mut DISPATCH_COUNT: usize = 0;
+        unsafe {
+            DISPATCH_COUNT += 1;
+            if DISPATCH_COUNT <= 10 || irq_num == 48 {
+                trace!("GIC dispatch_irq: IRQ {} (count: {})", irq_num, DISPATCH_COUNT);
+            }
+        }
+        crate::irq::dispatch_irq_common(irq_num as _)
+    });
 }
 
 /// Initializes GICD, GICC on the primary CPU.

@@ -101,9 +101,7 @@ unsafe fn init_boot_page_table() {
     crate::platform::mem::init_boot_page_table(&mut BOOT_PT_L0, &mut BOOT_PT_L1);
 }
 
-
-
-#[naked]
+#[unsafe(naked)]
 #[no_mangle]
 #[link_section = ".text.boot"]
 

@@ -17,7 +17,7 @@ use desc_uvc::{
     },
     UVCDescriptorTypes,
 };
-use log::{debug, trace, warn};
+use log::{debug, info, warn};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use parser::{Error, ParserMetaData};
@@ -93,7 +93,17 @@ pub(crate) enum USBDescriptor {
 
 impl USBDescriptor {
     pub(crate) fn from_slice(raw: &[u8], metadata: ParserMetaData) -> Result<Self, Error> {
-        assert_eq!(raw.len(), raw[0].into());
+        if raw.is_empty() {
+            return Err(Error::UnrecognizedType(0));
+        }
+        
+        // 检查描述符长度是否合理
+        let claimed_len = raw[0] as usize;
+        if claimed_len == 0 || claimed_len > raw.len() {
+            info!("描述符长度不合理: 声明长度 {} 实际长度 {}", claimed_len, raw.len());
+            return Err(Error::UnrecognizedType(raw[0]));
+        }
+        
         match Self::from_slice_standard_usb(raw) {
             Ok(okay) => Ok(okay),
             Err(_) if let ParserMetaData::HID = metadata => Self::from_slice_hid(raw),
@@ -103,7 +113,13 @@ impl USBDescriptor {
     }
 
     pub(crate) fn from_slice_uvc(raw: &[u8], flag: u8) -> Result<Self, Error> {
-        trace!("from slice uvc!{:?}", raw);
+        info!("from slice uvc!{:?}", raw);
+        
+        if raw.len() < 3 {
+            info!("UVC描述符太短，至少需要3字节");
+            return Err(Error::UnrecognizedType(raw.len() as u8));
+        }
+        
         match UVCDescriptorTypes::from(raw[1]) {
             UVCDescriptorTypes::UVCClassSpecUnderfined => panic!("underfined!"),
             UVCDescriptorTypes::UVCClassSpecDevice => todo!(),
@@ -124,9 +140,36 @@ impl USBDescriptor {
                 }
             }
             UVCDescriptorTypes::UVCClassSpecVideoControlInterruptEndpoint => {
-                Ok(Self::UVCClassSpecVideoControlInterruptEndpoint(unsafe {
-                    ptr::read((raw as *const [u8]).cast())
-                }))
+                // 使用原始数据直接解析，而不创建默认值
+                let actual_size = raw.len();
+                
+                // 检查是否至少有5字节，这是最小的必要长度
+                if actual_size < 5 {
+                    // 如果长度小于5字节，则确实太短，无法解析
+                    warn!("UVC端点描述符太短无法解析: {} 字节, 最少需要5字节", actual_size);
+                    return Err(Error::UnrecognizedType(raw.len() as u8));
+                }
+                
+                // 安全地从原始数据创建端点描述符结构
+                let mut endpoint = UVCVideoControlInterruptEndpoint {
+                    len: raw[0],
+                    descriptor_type: raw[1],
+                    descriptor_sub_type: raw[2],
+                    max_transfer_size_low: raw[3],
+                    max_transfer_size_high: if actual_size >= 6 { raw[4] } else { 0 },
+                };
+                
+                // 如果实际长度和声明长度不匹配，进行警告但继续处理
+                if endpoint.len as usize != actual_size {
+                    warn!("UVC端点描述符声明长度({})与实际长度({})不匹配", 
+                         endpoint.len, actual_size);
+                }
+                
+                info!("解析UVC端点描述符: 长度={}, 类型={}, 子类型={}, 最大传输大小={}", 
+                      endpoint.len, endpoint.descriptor_type, endpoint.descriptor_sub_type, 
+                      endpoint.max_transfer_size());
+                
+                Ok(Self::UVCClassSpecVideoControlInterruptEndpoint(endpoint))
             }
         }
     }

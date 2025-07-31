@@ -13,9 +13,11 @@ documentation = "https://rcore-os.github.io/arceos/driver_usb/index.html"
 default = ["xhci","packed_drivers"]
 packed_drivers=[]
 xhci=[]
+alloc = []
 
 [dependencies]
-xhci = "0.9"
+#xhci = "0.9"
+xhci = {path = "../../crates/xhci-0.9.2"}
 log="0.4"
 memory_addr = {path= "../../crates/memory_addr"}
 spinlock = { path = "../../crates/spinlock" }

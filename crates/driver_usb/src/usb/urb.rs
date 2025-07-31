@@ -1,7 +1,8 @@
 use core::sync::atomic::AtomicUsize;
+use core::fmt;
 
 use alloc::sync::Arc;
-use log::trace;
+use log::info;
 use spinlock::{BaseSpinLock, SpinNoIrq};
 use xhci::ring::trb::event;
 
@@ -10,7 +11,7 @@ use crate::PlatformAbstractions;
 use super::{
     drivers::driverapi::{USBSystemDriverModule, USBSystemDriverModuleInstance},
     operation::{Configuration, ExtraStep},
-    trasnfer::{control::ControlTransfer, interrupt::InterruptTransfer,bulk::BulkTransfer},
+    trasnfer::{control::ControlTransfer, interrupt::InterruptTransfer, isoch::IsochTransfer},
 };
 
 #[derive(Clone)]
@@ -40,12 +41,25 @@ where
     }
 }
 
+// 为URB实现Debug特征
+impl<'a, O> fmt::Debug for URB<'a, O>
+where
+    O: PlatformAbstractions,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("URB")
+            .field("device_slot_id", &self.device_slot_id)
+            .field("operation", &self.operation)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum RequestedOperation<'a> {
     ExtraStep(ExtraStep),
     Control(ControlTransfer),
-    Bulk(BulkTransfer),
+    Bulk,
     Interrupt(InterruptTransfer),
-    Isoch,
+    Isoch(IsochTransfer),
     ConfigureDevice(Configuration<'a>),
 }

@@ -19,6 +19,8 @@ where
     pub current_alternative_interface_value: usize,
     pub descriptors: Arc<MightBeInited<TopologicalUSBDescriptorRoot>>,
     pub controller: ControllerArc<O>,
+    #[cfg(feature = "xhci")]
+    pub xhci_arc: Option<Arc<spinlock::SpinNoIrq<crate::host::data_structures::host_controllers::xhci::XHCI<O>>>>,
 }
 
 impl<O> DriverIndependentDeviceInstance<O>
@@ -33,6 +35,14 @@ where
             configuration_val: 1,
             interface_val: 0,
             current_alternative_interface_value: 0,
+            #[cfg(feature = "xhci")]
+            xhci_arc: None,
         }
+    }
+    
+    #[cfg(feature = "xhci")]
+    pub fn with_xhci_arc(mut self, xhci_arc: Option<Arc<spinlock::SpinNoIrq<crate::host::data_structures::host_controllers::xhci::XHCI<O>>>>) -> Self {
+        self.xhci_arc = xhci_arc;
+        self
     }
 }

@@ -195,6 +195,14 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     {
         info!("Initialize interrupt handlers...");
         init_interrupt();
+        
+        // 启用中断（对于AArch64，清除DAIF的I位）
+        #[cfg(target_arch = "aarch64")]
+        unsafe {
+            use core::arch::asm;
+            asm!("msr daifclr, #2");
+            info!("Interrupts enabled on CPU {}", cpu_id);
+        }
     }
 
     #[cfg(all(feature = "tls", not(feature = "multitask")))]

@@ -82,5 +82,13 @@ fn handle_sync_exception(tf: &mut TrapFrame) {
 
 #[no_mangle]
 fn handle_irq_exception(_tf: &TrapFrame) {
+    // 添加日志以调试中断处理
+    static mut IRQ_COUNT: usize = 0;
+    unsafe {
+        IRQ_COUNT += 1;
+        if IRQ_COUNT <= 10 || IRQ_COUNT % 1000 == 0 {
+            debug!("handle_irq_exception called, count: {}", IRQ_COUNT);
+        }
+    }
     crate::trap::handle_irq_extern(0)
 }

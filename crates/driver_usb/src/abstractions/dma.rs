@@ -8,7 +8,6 @@ use core::{
 };
 
 use alloc::vec::Vec;
-use axalloc::global_no_cache_allocator;
 use log::debug;
 
 pub struct DMA<T, A>

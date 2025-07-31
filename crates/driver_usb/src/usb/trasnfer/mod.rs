@@ -1,5 +1,5 @@
-pub mod interrupt;
-pub mod endpoints;
 pub mod control;
-pub mod bulk;
+pub mod endpoints;
+pub mod interrupt;
+pub mod isoch;
 

@@ -3,7 +3,7 @@ use core::ptr;
 //
 use alloc::vec;
 use alloc::vec::Vec;
-use log::{debug, error, trace, warn};
+use log::{debug, error, info, warn};
 use num_traits::FromPrimitive;
 
 use crate::{
@@ -63,7 +63,6 @@ enum ParserStateMachine {
 
 #[derive(Clone, Debug)]
 pub enum ParserMetaData {
-    USBToSerial,
     UVC(u8),
     HID,
     Unknown(ParserMetaDataUnknownSituation),
@@ -80,15 +79,11 @@ pub enum ParserMetaDataUnknownSituation {
 impl ParserMetaData {
     //refer https://www.usb.org/defined-class-codes
     pub fn determine(class: u8, subclass: u8, protocol: u8) -> Self {
-        trace!("determine metadata from class:{},subclass:{},protocol:{}", class, subclass, protocol);
         match (class.into(), subclass, protocol) {
             (StandardUSBDeviceClassCode::Miscellaneous, 0x02, 0x01) => {
                 return Self::Unknown(ParserMetaDataUnknownSituation::ReferIAC)
             }
             (StandardUSBDeviceClassCode::HID, _, _) => return Self::HID,
-            (StandardUSBDeviceClassCode::VendorSpecific,0,0)=> {
-                return Self::USBToSerial
-            }
             (StandardUSBDeviceClassCode::ReferInterfaceDescriptor, _, _) => {
                 return Self::Unknown(ParserMetaDataUnknownSituation::ReferInterface)
             }
@@ -156,22 +151,19 @@ where
     pub fn single_state_cycle(&mut self) -> bool {
         match &self.state {
             ParserStateMachine::Device => {
-                trace!("parse single device desc!");
                 self.result = self.parse_single_device_descriptor().ok();
                 self.state = ParserStateMachine::NotReady;
-                trace!("state change:{:?}", self.state);
-                self.current = 0; 
+                info!("state change:{:?}", self.state);
+                self.current = 0;
                 self.current_len = 0;
                 true
             }
             ParserStateMachine::Config(index) => {
                 let num_of_configs = self.num_of_configs();
-                trace!("parse config desc!,num of configs:{}", num_of_configs);
                 let current_index = *index;
-                trace!("current index:{}", current_index);
                 if current_index >= num_of_configs {
                     self.state = ParserStateMachine::END;
-                    trace!("state change:{:?}", self.state);
+                    info!("state change:{:?}", self.state);
                     return false;
                 }
                 let topological_usbdescriptor_configuration = self.parse_current_config().unwrap();
@@ -181,19 +173,20 @@ where
                     .child
                     .push(topological_usbdescriptor_configuration);
                 self.state = ParserStateMachine::Config(current_index + 1);
-                trace!("state change:{:?}", self.state);
+                info!("state change:{:?}", self.state);
                 true
             }
-        
             ParserStateMachine::END => panic!("should not call anymore while reaching end"),
             ParserStateMachine::NotReady => {
-                if let Some(res) = &self.result
-                    && self.configs.len() >= res.data.num_configurations as _
-                {
-                    self.state = ParserStateMachine::Config(0);
-                    trace!("state change:{:?}", self.state);
-                    self.current_len = self.configs[0].1;
-                    true
+                if let Some(res) = &self.result {
+                    if self.configs.len() >= res.data.num_configurations as _ {
+                        self.state = ParserStateMachine::Config(0);
+                        info!("state change:{:?}", self.state);
+                        self.current_len = self.configs[0].1;
+                        true
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
@@ -222,30 +215,11 @@ where
     }
 
     fn parse_single_device_descriptor(&mut self) -> Result<TopologicalUSBDescriptorDevice, Error> {
-        trace!("parse single device desc!");
+        info!("parse single device desc!");
         if let USBDescriptor::Device(dev) = self.parse_any_descriptor()? {
             {
-                trace!("parsed device.len:{}", dev.len);
-                trace!("parsed device.descriptor_type:{}", dev.descriptor_type);
-                let cd_usb = dev.cd_usb;
-                trace!("parsed device.cd_usb:{:x}", cd_usb);
-                trace!("parsed device.class:{}", dev.class);
-                trace!("parsed device.subclass:{}", dev.subclass);
-                trace!("parsed device.protocol:{}", dev.protocol);
-                trace!("parsed device.max_packet_size0:{}", dev.max_packet_size0);
-                let vendor = dev.vendor;
-                trace!("parsed device.vendor:{:x}", vendor);
-                let product_id = dev.product_id;
-                trace!("parsed device.product_id:{:x}", product_id);
-                let devicee = dev.device;
-                trace!("parsed device.device:{}", devicee);
-                trace!("parsed device.manufacture:{}", dev.manufacture);
-                trace!("parsed device.product:{}", dev.product);
-                trace!("parsed device.serial_number:{}", dev.serial_number);
-                trace!("parsed device.num_configurations:{}", dev.num_configurations);
                 match self.metadata {
                     ParserMetaData::NotDetermined => {
-                        trace!("ParserMetaData::NotDetermined");
                         self.metadata =
                             ParserMetaData::determine(dev.class, dev.subclass, dev.protocol)
                     }
@@ -262,21 +236,12 @@ where
     }
 
     fn parse_current_config(&mut self) -> Result<TopologicalUSBDescriptorConfiguration, Error> {
-        trace!("parse config desc!");
+        info!("parse config desc!");
         let raw = self.cut_raw_descriptor()?;
 
         let mut cfg =
             USBDescriptor::from_slice(&raw, self.metadata.clone()).and_then(|converted| {
                 if let USBDescriptor::Configuration(cfg) = converted {
-                    trace!("get ch340 config desc!");
-                    trace!("parsed config.len:{}", cfg.length());
-                    trace!("parsed config.ty:{}", cfg.ty());
-                    trace!("parsed config.total_length:{}", cfg.total_length());
-                    trace!("parsed config.num_interfaces:{}", cfg.num_interfaces());
-                    trace!("parsed config.config_val:{}", cfg.config_val());
-                    trace!("parsed config.config_string:{}", cfg.config_string());
-                    trace!("parsed config.attributes:{}", cfg.attributes());
-                    trace!("parsed config.max_power:{}", cfg.max_power());
                     Ok(TopologicalUSBDescriptorConfiguration {
                         data: cfg,
                         child: Vec::new(),
@@ -286,7 +251,7 @@ where
                 }
             })?;
 
-        trace!("max num of interface num:{}", cfg.data.num_interfaces());
+        info!("max num of interface num:{}", cfg.data.num_interfaces());
 
         loop {
             match self.parse_function() {
@@ -307,12 +272,12 @@ where
     }
 
     fn parse_function(&mut self) -> Result<TopologicalUSBDescriptorFunction, Error> {
-        trace!("parse function desc!");
+        info!("parse function desc!");
 
         if let Some(desc_type) = self.peek_std_desc_type() {
             match desc_type {
                 USBStandardDescriptorTypes::Interface => {
-                    trace!(
+                    info!(
                         "parse single interface desc! current state:{:?}",
                         self.state
                     );
@@ -320,40 +285,40 @@ where
                     let mut interfaces = Vec::new();
 
                     loop {
-                        trace!("loop! state:{:?}", self.state);
+                        info!("loop! state:{:?}", self.state);
                         match &self.state {
                             ParserStateMachine::Config(cfg_id) => {
                                 self.state = ParserStateMachine::Inetrface(
                                     (*cfg_id),
                                     self.peek_interface().unwrap().interface_number,
                                 );
-                                trace!("state change:{:?}", self.state);
+                                info!("state change:{:?}", self.state);
                             }
                             ParserStateMachine::Inetrface(cfg_index, current_interface_id) => {
-                                trace!("state interface!");
+                                info!("state interface!");
                                 match &self.peek_interface() {
                                     Some(next)
                                         if (next.interface_number) == *current_interface_id =>
                                     {
-                                        trace!("equal!");
-                                        trace!("current:{:?}", current_interface_id);
+                                        info!("equal!");
+                                        info!("current:{:?}", current_interface_id);
                                         let interface = self.parse_interface().unwrap();
-                                        trace!("got interface {:?}", interface);
+                                        info!("got interface {:?}", interface);
                                         let additional = self.parse_other_descriptors_by_metadata();
-                                        trace!("got additional data {:?}", additional);
+                                        info!("got additional data {:?}", additional);
                                         let endpoints = self.parse_endpoints();
-                                        trace!("got endpoints {:?}", endpoints);
+                                        info!("got endpoints {:?}", endpoints);
                                         interfaces.push((interface, additional, endpoints))
                                     }
                                     Some(next)
                                         if (next.interface_number) != *current_interface_id =>
                                     {
-                                        trace!("not equal!");
+                                        info!("not equal!");
                                         self.state = ParserStateMachine::Inetrface(
                                             *cfg_index,
                                             next.interface_number,
                                         );
-                                        trace!("state change:{:?}", self.state);
+                                        info!("state change:{:?}", self.state);
                                         break;
                                     }
                                     None => break,
@@ -367,18 +332,18 @@ where
                     Ok(TopologicalUSBDescriptorFunction::Interface(interfaces))
                 }
                 USBStandardDescriptorTypes::InterfaceAssociation => {
-                    trace!("parse InterfaceAssociation desc!");
+                    info!("parse InterfaceAssociation desc!");
                     let interface_association = self.parse_interface_association().unwrap();
                     // match &self.state {
                     //     ParserStateMachine::Config(cfg_id) => {
                     //         self.state = ParserStateMachine::Inetrface(cfg_id.clone(), 0);
-                    //         trace!("state change:{:?}", self.state);
+                    //         info!("state change:{:?}", self.state);
                     //     }
                     //     other => panic!("error on switching state! {:?}", other),
                     // }
                     let mut interfaces = Vec::new();
                     for i in 0..interface_association.interface_count {
-                        trace!("parsing {i}th interface!");
+                        info!("parsing {i}th interface!");
                         //agreement:there is always some interfaces that match the cound behind association
                         interfaces.push(self.parse_function()?);
                     }
@@ -388,7 +353,7 @@ where
                     )))
                 }
                 anyother => {
-                    trace!("unrecognize type!");
+                    info!("unrecognize type!");
                     Err(Error::UnrecognizedType(anyother as u8))
                 }
             }
@@ -398,7 +363,7 @@ where
     }
 
     fn parse_any_descriptor(&mut self) -> Result<USBDescriptor, Error> {
-        trace!(
+        info!(
             "parse any desc at current{}! type:{:?}",
             self.current,
             self.peek_std_desc_type()
@@ -431,14 +396,14 @@ where
             ParserStateMachine::Device => {
                 let peeked =
                     USBStandardDescriptorTypes::from_u8(self.device[self.current + 1] as u8);
-                trace!("peeked type:{:?}", peeked);
+                info!("peeked type:{:?}", peeked);
                 peeked
             }
             ParserStateMachine::Config(index) | ParserStateMachine::Inetrface(index, _) => {
                 let peeked = USBStandardDescriptorTypes::from_u8(
                     self.configs[index].0[self.current + 1] as u8,
                 );
-                trace!("peeked std type:{:?}", peeked);
+                info!("peeked std type:{:?}", peeked);
                 peeked
             }
             _ => panic!("impossible!"),
@@ -447,7 +412,7 @@ where
 
     //while call this methods, parser state machine always at "config" state
     fn peek_uvc_desc_type(&mut self) -> Option<UVCDescriptorTypes> {
-        trace!("peek uvc type!");
+        info!("peek uvc type!");
         match self.state {
             ParserStateMachine::Config(index) | ParserStateMachine::Inetrface(index, _) => {
                 UVCDescriptorTypes::from_u8(self.configs[index].0[self.current + 1])
@@ -459,7 +424,7 @@ where
     fn peek_interface(&self) -> Option<Interface> {
         match self.state {
             ParserStateMachine::Config(index) | ParserStateMachine::Inetrface(index, _) => {
-                trace!(
+                info!(
                     "peek at {},value:{}",
                     self.current,
                     self.configs[index].0[self.current]
@@ -469,10 +434,10 @@ where
                     let len = self.configs[index].0[self.current] as usize;
                     let from = self.current;
                     let to = from + len - 1;
-                    trace!("len{len},from{from},to{to}");
+                    info!("len{len},from{from},to{to}");
                     let raw = (&self.configs[index].0[from..to]) as *const [u8];
                     let interface = unsafe { ptr::read_volatile(raw as *const Interface) }; //do not cast, in current version rust still had value cache issue
-                    trace!("got:{:?}", interface);
+                    info!("got:{:?}", interface);
 
                     return Some(interface);
                 }
@@ -483,7 +448,7 @@ where
     }
 
     fn parse_interface(&mut self) -> Result<Interface, Error> {
-        trace!("parse interfaces,metadata:{:?}", self.metadata);
+        info!("parse interfaces,metadata:{:?}", self.metadata);
         match self.parse_any_descriptor()? {
             USBDescriptor::Interface(int) => {
                 match &self.metadata {
@@ -506,7 +471,7 @@ where
     }
 
     fn parse_other_descriptors_by_metadata(&mut self) -> Vec<USBDescriptor> {
-        trace!(
+        info!(
             "parse additional data for interface with metadata:{:?}",
             self.metadata
         );
@@ -519,7 +484,7 @@ where
                     | USBStandardDescriptorTypes::InterfaceAssociation,
                 ) => break,
                 Some(_) | None => {
-                    trace!("parse misc desc!");
+                    info!("parse misc desc!");
                     vec.push(
                         self.parse_any_descriptor()
                             .inspect_err(|e| error!("usb descriptor parse failed:{:?}", e))
@@ -533,14 +498,14 @@ where
     }
 
     fn parse_endpoints(&mut self) -> Vec<TopologicalUSBDescriptorEndpoint> {
-        trace!("parse enedpoints, metadata:{:?}", self.metadata);
+        info!("parse enedpoints, metadata:{:?}", self.metadata);
         let mut endpoints = Vec::new();
 
         loop {
             if let Some(USBStandardDescriptorTypes::Endpoint) = self.peek_std_desc_type() {
                 match self.parse_any_descriptor().unwrap() {
                     USBDescriptor::Endpoint(endpoint) => {
-                        trace!("parsed endpoint:{:?}", endpoint);
+                        info!("parsed endpoint:{:?}", endpoint);
                         endpoints.push(TopologicalUSBDescriptorEndpoint::Standard(endpoint))
                     }
                     _ => {}
@@ -553,10 +518,10 @@ where
                     if let Some(UVCDescriptorTypes::UVCClassSpecVideoControlInterruptEndpoint) =
                         self.peek_uvc_desc_type()
                     {
-                        trace!("uvc interrupt endpoint!");
+                        info!("uvc interrupt endpoint!");
                         match self.parse_any_descriptor().unwrap() {
                             USBDescriptor::UVCClassSpecVideoControlInterruptEndpoint(ep) => {
-                                trace!("got {:?}", ep);
+                                info!("got {:?}", ep);
                                 endpoints.push(TopologicalUSBDescriptorEndpoint::UNVVideoControlInterruptEndpoint(ep));
                             }
                             _ => {
@@ -565,7 +530,7 @@ where
                         }
                         continue;
                     } else {
-                        trace!("not uvc data!");
+                        info!("not uvc data!");
                     }
                 }
                 _ => {}
